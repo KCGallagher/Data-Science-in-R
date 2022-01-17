@@ -1,0 +1,17 @@
+---
+title: "Using Statistical Distributions"
+output: html_notebook
+---
+
+# Basic Evaluations
+
+
+$P(X = 112)$ where $X$ is binomial with $n = 200, \ p = 0.6$.
+
+
+```{r}
+print(paste("P{X = 112} =",dbinom(112, size = 200, prob = 0.6)))
+```
+
+
+
