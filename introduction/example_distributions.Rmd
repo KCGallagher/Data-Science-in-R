@@ -5,13 +5,58 @@ output: html_notebook
 
 # Basic Evaluations
 
-
-$P(X = 112)$ where $X$ is binomial with $n = 200, \ p = 0.6$.
+<br>$P(X = 112)$ where $X$ is binomial with $n = 200, \ p = 0.6$.
 
 
 ```{r}
-print(paste("P{X = 112} =",dbinom(112, size = 200, prob = 0.6)))
+n <- 200
+p <- 0.6
+x <- 112
+
+value <- choose(n, x) * (p ^ x) * ((1 - p)^(n - x)) 
+print(paste("My func: ", value))
+print(paste("Built-in: ",dbinom(x, size = n, prob = p)))
 ```
 
+<br>$P(X ≥ 4)$ where $X$ is Poisson with parameter $\lambda = 8$
 
+```{r}
+lambda <- 8
+x <- 4
+
+poisson_pdf <- function(rate, value){
+  return(exp(-rate) * (rate ^ value) / factorial(value))  
+}
+poisson_cdf <- function(rate, value){
+  sum <- 0
+  for (x in 0:value){
+    sum = sum + poisson_pdf(rate, x)
+  }
+  return(sum)
+}
+
+value <- (1 - poisson_cdf(lambda, x))
+print(paste("My func: ", value))
+print(paste("Built-in: ",(1 - ppois(x, lambda))))
+```
+
+<br>$P(1 < X < 2)$ where $X$ is Exponential with parameter $\lambda = 2$
+
+```{r}
+lambda <- 2
+lower_val <- 1
+upper_val <- 2
+
+exp_cdf <- function(value, lambda){
+  return(1 - exp(-lambda * value))
+}
+print(paste("My func: ",(exp_cdf(upper_val, lamdba) - exp_cdf(lower_val, lambda))))
+print(paste("Built-in: ",(pexp(upper_val, lamdba) - pexp(lower_val, lambda))))
+```
+
+<br>$P(X < 2)$ where $X$ is normal with $\mu = 3, \sigma = 7$
+
+```{r}
+print(paste("P(X < 2) =", pnorm(2, 3, 7)))
+```
 
