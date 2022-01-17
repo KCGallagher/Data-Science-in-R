@@ -50,8 +50,8 @@ upper_val <- 2
 exp_cdf <- function(value, lambda){
   return(1 - exp(-lambda * value))
 }
-print(paste("My func: ",(exp_cdf(upper_val, lamdba) - exp_cdf(lower_val, lambda))))
-print(paste("Built-in: ",(pexp(upper_val, lamdba) - pexp(lower_val, lambda))))
+print(paste("My func: ",(exp_cdf(upper_val, lambda) - exp_cdf(lower_val, lambda))))
+print(paste("Built-in: ",(pexp(upper_val, lambda) - pexp(lower_val, lambda))))
 ```
 
 <br>$P(X < 2)$ where $X$ is normal with $\mu = 3, \sigma = 7$
@@ -60,3 +60,68 @@ print(paste("Built-in: ",(pexp(upper_val, lamdba) - pexp(lower_val, lambda))))
 print(paste("P(X < 2) =", pnorm(2, 3, 7)))
 ```
 
+# Exponential Model Distribution
+
+$$ f(x;\lambda) = \lambda e^{-\lambda x} \qquad x \ge 0 $$
+
+I simulate $1000$ groups of $k$ copies of an exponential random variable
+with parameter $\lambda = 2$, where $k = 1, 2, 10, 100$.
+
+```{r}
+# Simulation
+
+sim_exp_rand_groups <- function(lambda, group_size, n_group){
+  # Simulates n_groups of random variables, from an exponential
+  # distribution with parameter lambda
+  for(i in 1:n_group){
+    row <- rexp(group_size, lambda)
+    if(i==1){
+      array <- row
+      next
+    }
+    array <- rbind(array, row)
+  }
+  return(array)
+}
+
+```
+
+
+For each k do the following, I compute the mean of each group, and use a normal Q–Q plot to compare it to a normal distribution. I also plot a histogram, superimposing a normal curve with the same mean and variance.
+
+
+```{r}
+# Plotting
+
+library(ggplot2)
+
+norm_qq_plot <- function(data){
+  qqnorm(data, frame = FALSE)
+  qqline(data, col = "steelblue", lwd = 2)
+}
+
+norm_hist_plot <- function(data, lambda, k){
+  hist(data, freq=FALSE, xlab = "Mean of Exponential Random Variable Groups")
+  curve(dnorm(x, mean=(1 / lambda), sd=(1 / (lambda * sqrt(k)))), 
+      col="darkblue", lwd=2, add=TRUE, yaxt="n")
+}
+
+```
+
+```{r}
+# Running 
+
+main <-  function(lambda, group_size, n_group){
+  data <- sim_exp_rand_groups(lambda, group_size, n_group)
+  means <- rowMeans(data)
+  norm_qq_plot(means)
+  norm_hist_plot(means, lambda, group_size)
+}
+
+
+n_group <- 1000
+k <- 100  # Can vary this to see the effect of sample size
+lambda <- 2
+main(lambda, k, n_group)
+```
+Note the good agreement with the normal distribution when k is large enough, whereas the prevalance of extreme values in the smaller group sizes resulting in deviation from the normal distribution.
