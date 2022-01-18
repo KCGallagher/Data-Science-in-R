@@ -1,0 +1,70 @@
+---
+title: "Genomic Statistics"
+output: html_notebook
+---
+
+# Descriptive Statistics
+
+The following analysis uses data from the completely sequenced genome of E. coli,
+more precisely strain K-12, substrain MG 1655, version M52 short. 
+Methods used are adapated from a lab written by Terry Speed and Bin Yu.
+
+```{r}
+# Read in data from local file
+
+# Takes a text file listing a genome sequence with one element per line
+ecp <- scan(file = "Ecoli.txt", what=character())
+
+```
+
+Consider the frequency of each base in this sequence:
+
+```{r}
+print(round((table(ecp) / length(ecp)), 4))
+```
+
+We may also consider the contingency table for all pairs of bases within the sequence:
+
+```{r}
+L <- length(ecp)
+print(round(table(ecp[-L],ecp[-1]) / L, 3))
+```
+
+This suggests the probability of observing a given base (such as G) is not independent of the value of the previous base.
+
+# Purine Counts
+
+Divide up the data into blocks of multiple base pairs (bp).
+Count the number of purines (i.e. A or G). 
+
+```{r}
+library(matrixStats)
+
+split_data <- function(vec_data, row_len){
+  row_num <- floor(length(vec_data) / row_len)
+  return(matrix(vec_data, nrow = row_num, byrow = TRUE))
+}
+
+count_purines <-  function(vec_data, row_len){
+  # Groups bases into subsets of size row_len
+  # Counts number of purines and plots histograms
+  mat_data <- split_data(vec_data, row_len)
+  count_A <- rowCounts(mat_data, value = "A")
+  count_G <- rowCounts(mat_data, value = "G")
+  count_tot <- count_A + count_G
+  return(count_tot)
+}
+
+```
+
+We may now plot this data in comparison to a normal distribution: 
+
+```{r}
+library(fitdistrplus)
+
+counts <- count_purines(ecp, 10000)
+fit <- fitdist(counts, "norm")
+denscomp(fit, xlab = "Number of purines in group")
+```
+
+We observe here that smaller group sizes result in a better fit to the normal distribution, as we have better smpling for more groups.
