@@ -1,0 +1,143 @@
+---
+title: "House Price Prediction"
+output: html_notebook
+---
+
+I apply a regression modelling technique to house price prediction using a subset of the California house price dataset. The dataset contains 200 observations for housing blocks in California obtained from the 1990 census. 
+
+```{r}
+# Load necessary libraries and data
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(reshape2)
+
+df <- read.csv(file = "housing_short.csv")
+print(head(df))
+```
+Consider the relationship between the median income in a block, and the median house value (plotted with a quadratic line of best fit):
+
+```{r}
+
+legend <- c("Quadratic Fit" = "red", "Linear Fit" = "blue", "Data" = "black")
+
+ggplot(df, aes(x=median_income, y=median_house_value, color = "Data")) + 
+  geom_point() + geom_smooth(method='lm', se=FALSE, aes(color = "Linear Fit")) +
+  geom_smooth(method='lm', formula = "y ~ poly(x, 2)", se=FALSE, aes(color = "Quadratic Fit")) +
+  labs(title = "Median House Value against Median Income") +
+  scale_y_continuous("Median House Value ($)") +
+  scale_x_continuous("Median Income ($10,000s)") +
+  scale_color_manual(values = legend)
+
+ggsave(filename = "income_vs_value.png", device = "png", path = "images")
+```
+Split the data into a training set comprising the first 140 rows of the dataset, a validation set comprising rows 141-180 and a testing set comprising rows 180-200.
+
+```{r}
+rows <- sample(nrow(df))
+# df <- df[rows, ]  # Un-comment to randomly shuffle the dataset
+
+df_train <-  df[1:140,]
+df_valid <- df[141:180,]
+df_test <- df[181:nrow(df),]
+```
+
+Create a linear regression model using the package
+
+```{r}
+model <- lm(median_house_value~median_income, data=df_train)
+summary(model)
+```
+For every \$10,000 increase in income, there is an associated increase in house value of \$38,948. However, the $R^{2}$ value is lower - as explained by the poor linear fit to the data in the previous graph
+
+
+```{r}
+model2 <- lm(median_house_value~median_income + I(median_income^2), data=df_train)
+summary(model2)
+```
+Adding a quadratic terms to our regression model increases the $R^{2}$ value tp $0.71$, suggesting a better fit.
+
+We could consider adding terms all the way up to fifth order:
+
+```{r}
+model5 <- lm(median_house_value~median_income + I(median_income^2) + I(median_income^3) + I(median_income^4) +I(median_income^5), data=df_train)
+summary(model5)
+```
+This appears to increase the fit according to these summary statistics. However, if we plot this fit (in comparison to a linear fit) it is clear that we are actually over-fitting to our data:
+
+```{r}
+income <- seq(0, 12, length.out = 100)
+sample_df <- tibble(median_income=income)
+price1 <- predict(model, sample_df)  # Linear fit
+price5 <- predict(model5, sample_df)  # Quintic fit
+
+plot(df_train$median_income, df_train$median_house_value)
+lines(income, price5, col="blue")
+lines(income, price1, col="green")
+```
+We can confirm this by calculate the level of fit of these models to the validation set.
+
+```{r}
+# Predict prices of points in validation set
+v_price1 <- predict(model, df_valid)
+v_price2 <- predict(model2, df_valid)
+v_price5 <- predict(model5, df_valid)
+
+# Compare to actual data in validation set
+error1 <- df_valid$median_house_value - v_price1
+error2 <- df_valid$median_house_value - v_price2
+error5 <- df_valid$median_house_value - v_price5
+
+# Plot a histogram of the data
+tibble(model1=error1,
+       model2=error2,
+       model5=error5) %>% 
+  melt() %>%  
+  ggplot(aes(x=value, fill=variable)) +
+  geom_histogram(position="identity", alpha=0.6)
+```
+We may compare the rms errors to find an objective measure of the performance of each model:
+
+```{r}
+rmse <- function(errors) {
+  sse <- errors^2
+  sqrt(mean(sse))
+}
+RMSE1 <- rmse(error1)
+RMSE2 <- rmse(error2)
+RMSE5 <- rmse(error5)
+print(paste0("Linear model: ", RMSE1))
+print(paste0("Quadratic model: ", RMSE2))
+print(paste0("5th power model: ", RMSE5))
+
+ggsave(filename = "rmse_errors.png", device = "png", path = "images")
+```
+
+The quadratic model has the best performance, with the linear model under-fitting the data and the 5th order (quintic) model over-fitting the data.
+
+We can now progress with our quadratic model, to evaluate the overall performance.
+
+```{r}
+price_test <- predict(model2, df_test)
+error_test <- df_test$median_house_value - price_test
+print(paste0("Performance of quadratic model on test data set: ", rmse(error_test)))
+```
+This is significantly worse than the performance on the validation set, what is going wrong? Maybe our training data is not representative of our testing data:
+
+```{r}
+df_combined <- df_train %>% 
+  mutate(type="training") %>% 
+  bind_rows(df_valid %>%
+              mutate(type="validation")) %>% 
+  bind_rows(df_test %>%
+              mutate(type="testing"))
+df_combined %>% 
+  ggplot(aes(x=median_income,
+             y=median_house_value,
+             colour=type)) +
+  geom_point()
+
+ggsave(filename = "data_sets.png", device = "png", path = "images")
+```
+
+This explains the issue - our data is not split randomly between the subsets. Uncomment line 38 (`df <- df[rows, ]`) to randomly shuffle the dataset, and rerun the script to observe the difference. 
