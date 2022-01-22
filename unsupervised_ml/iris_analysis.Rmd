@@ -1,0 +1,58 @@
+---
+title: "Iris Clustering"
+output: html_notebook
+---
+
+I have implemented my own k-means clusering algorithm in `k_means_clusering.R`, which is imported here. I will use that to explore the iris dataset, which can be imported or called from base R directly.
+
+```{r}
+library(tidyverse)
+source("k_means_clustering.R")
+```
+
+I will import the .csv also provided in this directory, and visualise it:
+
+```{r}
+df_iris <- read.csv(file = "iris.csv")  # Could also use built-in dataset `iris`
+
+# png(filename = "images/iris_dataset.png")
+pairs(df_iris[1:4], main="Iris Data (red = setosa, green = versicolor, blue = virginica)",
+      pch=20, bg=c("red","green","blue")[unclass(df_iris$Species)])
+# dev.off()
+```
+
+First remove the categories from the original dataset.
+
+```{r}
+df_x <- df_iris %>% 
+  select(-Species)  
+```
+
+Then determine cluster IDs by running the k-means clustering algorithm:
+
+```{r}
+clusters <- run_kmeans(df_x, 3)
+```
+
+We will now compare those predicted clusters to the species labels.
+
+```{r}
+df <- df_iris %>% 
+  as.data.frame() %>% 
+  mutate(cluster=clusters)
+table(df$Species, df$cluster)
+```
+
+We see that our algorithm did a good job, and was able to differentiate between species correctly in most cases. The overlap between _versicolor_ and _virginica_ suggest these two species are more similar to each other than they are to _setosa_.
+
+But this was helped by knowing that there were three species present! If we chose k = 2 instead:
+
+```{r}
+clusters <- run_kmeans(df_x, 2)
+df <- df_iris %>% 
+  as.data.frame() %>% 
+  mutate(cluster=clusters)
+table(df$Species, df$cluster)
+```
+
+We see that the algorithm this time simply differentiated between _setosa_ and the other species - a logical output given that this seems to be better separated from the other species based on the previous result.
