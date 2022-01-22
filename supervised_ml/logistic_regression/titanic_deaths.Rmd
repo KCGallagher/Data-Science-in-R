@@ -1,0 +1,158 @@
+---
+title: "Logistic Regression"
+output: html_notebook
+---
+
+Here, I apply a logistic regression model to a dataset of Titanic passengers, to predict survival based on passenger class.
+
+```{r}
+# Load necessary libraries and data
+library(ggplot2)
+library(ggtext)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(reshape2)
+
+df <- read.csv(file = "titanic.csv")
+print(head(df))
+```
+
+Consider the fraction of passengers surviving in each class:
+
+```{r}
+df_hist <- df %>% 
+  select(Survived, Pclass, PassengerId) %>% 
+  group_by(Pclass) %>% 
+  summarise(Survivors = sum(Survived), Passengers = n())
+
+df_plot <- df_hist %>% 
+  pivot_longer(c(Survivors, Passengers), names_to = "survival_status", values_to = "People")
+
+ggplot(df_plot, aes(x = Pclass, y = People, fill = survival_status)) + 
+  geom_col(position = "dodge") + 
+  labs(title = "Passenger Survival")
+ggsave(filename = "survival_vs_class.png", device = "png", path = "images")
+```
+We may also visualise the survival probability in each class, with a 95% confidence interval:
+
+```{r}
+df %>% 
+  group_by(Pclass) %>% 
+  summarise(Survived=sum(Survived),
+            n=n()) %>%
+  mutate(lower=qbeta(0.025, 1 + Survived, 1 + n - Survived),
+         upper=qbeta(0.975, 1 + Survived, 1 + n - Survived),
+         middle=qbeta(0.5, 1 + Survived, 1 + n - Survived)) %>% 
+  ggplot(aes(x=as.factor(Pclass), y=middle)) +
+  geom_pointrange(aes(ymin=lower, ymax=upper)) +
+  xlab("Passenger class") +
+  ylab("Percentage surviving") +
+  scale_y_continuous(labels=scales::percent_format(accuracy=1)) 
+ggsave(filename = "survival_interval.png", device = "png", path = "images")
+```
+Both plots provide a convincing argument that the passenger class affected the survival probability. We can verify this with a $\chi^{2}$ test:
+
+```{r}
+print(suppressWarnings(chisq.test(df_hist)))
+```
+
+This shows that the association between passenger class and survival probability is statistically significant, with a p-value of almost zero. Now we are convinced that survival probability is influence by passenger class, we may consider predicting the survival outcome of passengers on the Titanic given their class, using a logistic regression model.
+
+To do so, we are actually going to use dummy variables for the classes: binary variables which take on the value 0 if not true and 1 if true.
+
+```{r}
+df <- df %>% 
+  mutate(class_1=as.integer(Pclass==1)) %>% 
+  mutate(class_2=as.integer(Pclass==2))
+```
+
+For later use, we will also define the logistic function:
+
+$$ \theta(x) = \frac{1}{1 + e^{-x}} $$
+
+```{r}
+logistic <- function(x){
+  return(1 / (1 + exp(-x)))
+}
+```
+
+This looks like:
+
+```{r}
+x <- seq(-8, 8, length.out = 1000)
+theta <- logistic(x)
+tibble(x, theta) %>% 
+  ggplot(aes(x, theta)) +
+  geom_line() + labs(y = expression(theta(x)))
+```
+
+We also require a function which returns the linear combination of $\beta_{0}+\beta_{1}z_{1}+\beta_{2}z_{2}$. This takes as input $\beta_{0},\beta_{1},\beta_{2}$ (the regression parameters) and the covariates $z_{1}, z_{2}$. This output can be subsequently fed into the logistic function to return the probability.
+
+```{r}
+linear_combination <- function(beta_0, beta_1, beta_2, z_1, z_2) {
+  return(beta_0 + beta_1 * z_1 + beta_2 * z_2)
+}
+
+probability <- function(beta_0, beta_1, beta_2, z_1, z_2) {
+  return(logistic(linear_combination(beta_0, beta_1, beta_2, z_1, z_2)))
+}
+```
+
+Let us now consider the log-likelihood for a single set, $i$, of data points: $(z_{1i},z_{2i},S_{i})$ where $S_{i}\in{0,1}$ represents whether a passenger survived. In logistic regression, we assume that $Si∼Bernoulli(\theta_{i})$. This means that the likelihood, $L_{i}$, for a single set of data points is given by:
+
+$$\theta_{i}=logistic(\beta_{0}+\beta_{1}z_{1}+\beta_{2}z_{2})$$
+$$L_{i}=\theta_{i}^{Si}(1−\theta_{i})^{1−S_{i}}$$
+
+The overall likelihood is given by the product of the indivudal likelihoods of all points, as we assume that the data are (conditionally) independent given the parameters.
+
+```{r}
+likelihood_single <- function(S_i, beta_0, beta_1, beta_2, z_1, z_2) {
+  theta_i <- probability(beta_0, beta_1, beta_2, z_1, z_2)
+  return(theta_i^S_i * (1 - theta_i)^(1 - S_i))
+}
+  
+likelihood <- function(beta_0, beta_1, beta_2, df) {
+  val <- 1
+  for(i in seq_along(df$Survived)) {
+    row <- df[i, ]
+    val <- val * likelihood_single(row$Survived, beta_0, beta_1, beta_2,
+                                   row$class_1, row$class_2)
+  }
+  return(val)
+}  
+
+```
+
+Now estimate the parameters $\beta_{0}$ and $\beta_{1}$ by doing a grid search. We start by fixing $\beta_{0} = −1.14$ (the maximum likelihood value of the parameter), then doing a grid search across all combinations of the following values of $\beta_{1} = (0, 1, 1.67, 2, 2.5)$ and $\beta_{2} = (−1, 0, 1, 2, 3)$. For each of the 25 combinations of both sets of parameters, calculate the likelihood. In doing so, find parameters that are close to the maximum likelihood values.
+
+```{r}
+beta_1 <- c(0, 1, 1.67, 2, 2.5)
+beta_2 <- c(-1, 0, 1, 2, 3)
+parameters <- expand_grid(beta_1, beta_2)
+parameters$log_likelihood <- NA
+for(i in seq_along(parameters$beta_1)) {
+  parameters$log_likelihood[i] <- likelihood(-1.14,
+                                             parameters$beta_1[i],
+                                             parameters$beta_2[i],
+                                             df)
+}
+max_likelihood <- parameters[which.max(parameters$log_likelihood), ]
+print(max_likelihood)
+```
+
+We may compare this to the built in maximum likelihood estimation:
+
+```{r}
+glm(Survived~class_1+class_2, data=df, family="binomial")
+```
+
+This shows we have done a rather good job with our niave approach!
+
+Using our estimates, we can predict the odds ratio for survival of 1st and 2nd class passengers relative to those in third class:
+
+```{r}
+print(paste("Survival Odds Ratio for 1st class", round(exp(max_likelihood$beta_1), 2)))
+print(paste("Survival Odds Ratio for 2nd class", round(exp(max_likelihood$beta_2), 2)))
+```
+
